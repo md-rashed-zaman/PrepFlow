@@ -1,0 +1,506 @@
+"use client";
+
+import * as React from "react";
+
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import type { ProblemWithState } from "@/lib/types";
+
+function normalizeTopics(raw: string) {
+  return raw
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
+function normalizeDifficulty(s: string) {
+  const v = (s || "").trim().toLowerCase();
+  if (v === "easy" || v === "medium" || v === "hard") return v;
+  return "unknown";
+}
+
+function includesQuery(p: ProblemWithState, q: string) {
+  if (!q) return true;
+  const hay = [
+    p.title,
+    p.url,
+    p.platform,
+    p.difficulty,
+    ...(p.topics || []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return hay.includes(q.toLowerCase());
+}
+
+export default function LibraryPage() {
+  const [items, setItems] = React.useState<ProblemWithState[]>([]);
+  const [error, setError] = React.useState<string | null>(null);
+  const [open, setOpen] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+
+  const [url, setURL] = React.useState("");
+  const [title, setTitle] = React.useState("");
+  const [platform, setPlatform] = React.useState("");
+  const [difficulty, setDifficulty] = React.useState("");
+  const [topics, setTopics] = React.useState("");
+  const [logInitial, setLogInitial] = React.useState(false);
+  const [initialGrade, setInitialGrade] = React.useState<number>(3);
+  const [initialMinutes, setInitialMinutes] = React.useState<string>("");
+  const [initialReviewedAt, setInitialReviewedAt] = React.useState<string>("");
+
+  function pad2(n: number) {
+    return String(n).padStart(2, "0");
+  }
+  function toDatetimeLocalValue(d: Date) {
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  }
+
+  const [query, setQuery] = React.useState("");
+  const [difficultyFilter, setDifficultyFilter] = React.useState<"all" | "easy" | "medium" | "hard" | "unknown">("all");
+  const [platformFilter, setPlatformFilter] = React.useState<string>("all");
+  const [topicFilter, setTopicFilter] = React.useState<string>("all");
+  const [showArchived, setShowArchived] = React.useState(false);
+
+  async function load() {
+    setError(null);
+    setLoading(true);
+    const resp = await fetch("/api/problems", { cache: "no-store" });
+    if (!resp.ok) {
+      setError("Failed to load problems");
+      setLoading(false);
+      return;
+    }
+    const data = (await resp.json().catch(() => null)) as unknown;
+    if (!Array.isArray(data)) {
+      setItems([]);
+      setLoading(false);
+      return;
+    }
+    setItems(data as ProblemWithState[]);
+    setLoading(false);
+  }
+
+  React.useEffect(() => {
+    void load();
+  }, []);
+
+  const platforms = React.useMemo(() => {
+    const set = new Set<string>();
+    for (const p of items) {
+      if (p.platform) set.add(p.platform);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [items]);
+
+  const topicsList = React.useMemo(() => {
+    const set = new Set<string>();
+    for (const p of items) {
+      for (const t of p.topics || []) set.add(t);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [items]);
+
+  const filtered = React.useMemo(() => {
+    const q = query.trim();
+    return items
+      .filter((p) => {
+        const active = p.state?.is_active ?? true;
+        if (!showArchived && !active) return false;
+        if (!includesQuery(p, q)) return false;
+
+        const d = normalizeDifficulty(p.difficulty || "");
+        if (difficultyFilter !== "all" && d !== difficultyFilter) return false;
+
+        if (platformFilter !== "all" && (p.platform || "") !== platformFilter) return false;
+        if (topicFilter !== "all" && !(p.topics || []).includes(topicFilter)) return false;
+        return true;
+      })
+      .sort((a, b) => {
+        const ad = new Date(a.state?.due_at || 0).getTime();
+        const bd = new Date(b.state?.due_at || 0).getTime();
+        return ad - bd;
+      });
+  }, [items, query, difficultyFilter, platformFilter, topicFilter, showArchived]);
+
+  async function createProblem(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const rawMin = initialMinutes.trim();
+      const min = rawMin ? Number(rawMin) : 0;
+      const timeSpentSec = Number.isFinite(min) && min > 0 ? Math.round(min * 60) : undefined;
+      const reviewedAtISO = initialReviewedAt.trim() ? new Date(initialReviewedAt.trim()).toISOString() : undefined;
+
+      const resp = await fetch("/api/problems", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          url,
+          title: title || undefined,
+          platform: platform || undefined,
+          difficulty: difficulty || undefined,
+          topics: normalizeTopics(topics),
+          ...(logInitial
+            ? {
+                initial_review: {
+                  grade: initialGrade,
+                  ...(timeSpentSec ? { time_spent_sec: timeSpentSec } : {}),
+                  ...(reviewedAtISO ? { reviewed_at: reviewedAtISO } : {}),
+                  source: "library_add",
+                },
+              }
+            : {}),
+        }),
+      });
+      if (!resp.ok) {
+        const msg = (await resp.json().catch(() => null))?.error || "Failed to create problem";
+        setError(String(msg));
+        return;
+      }
+      setOpen(false);
+      setURL("");
+      setTitle("");
+      setPlatform("");
+      setDifficulty("");
+      setTopics("");
+      setLogInitial(false);
+      setInitialGrade(3);
+      setInitialMinutes("");
+      setInitialReviewedAt("");
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggleActive(problemID: string, next: boolean) {
+    setBusy(true);
+    setError(null);
+    try {
+      const resp = await fetch(`/api/problems/${encodeURIComponent(problemID)}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ is_active: next }),
+      });
+      if (!resp.ok) {
+        setError("Failed to update problem");
+        return;
+      }
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div>
+          <div className="pf-kicker">Library</div>
+          <CardTitle>Problems</CardTitle>
+          <CardDescription>Your personal catalog with scheduling state.</CardDescription>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={load}>
+            Refresh
+          </Button>
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button>Add problem</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add a problem</DialogTitle>
+                <DialogDescription>Paste the URL, then add metadata if you want.</DialogDescription>
+              </DialogHeader>
+              <form className="space-y-4" onSubmit={createProblem}>
+                <div className="space-y-2">
+                  <Label htmlFor="url">URL</Label>
+                  <Input id="url" value={url} onChange={(e) => setURL(e.target.value)} required />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="title">Title</Label>
+                    <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="platform">Platform</Label>
+                    <Input id="platform" value={platform} onChange={(e) => setPlatform(e.target.value)} placeholder="LeetCode" />
+                  </div>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="difficulty">Difficulty</Label>
+                    <Input id="difficulty" value={difficulty} onChange={(e) => setDifficulty(e.target.value)} placeholder="Easy/Medium/Hard" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="topics">Topics</Label>
+                    <Input id="topics" value={topics} onChange={(e) => setTopics(e.target.value)} placeholder="arrays, dp, graphs" />
+                  </div>
+                </div>
+                <div className="rounded-[20px] border border-[color:var(--line)] bg-[color:var(--pf-surface-weak)] p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="pf-display text-base font-semibold">Log an initial attempt</div>
+                      <div className="mt-1 text-xs text-[color:var(--muted)]">
+                        Optional: backfill when you already solved it earlier.
+                      </div>
+                    </div>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={logInitial}
+                        onChange={(e) => {
+                          setLogInitial(e.target.checked);
+                          if (e.target.checked && !initialReviewedAt) setInitialReviewedAt(toDatetimeLocalValue(new Date()));
+                        }}
+                      />
+                      Enable
+                    </label>
+                  </div>
+                  {logInitial ? (
+                    <div className="mt-4 space-y-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {[0, 1, 2, 3, 4].map((g) => (
+                          <Button
+                            key={g}
+                            type="button"
+                            size="sm"
+                            variant={g >= 3 ? "primary" : g === 2 ? "outline" : "secondary"}
+                            onClick={() => setInitialGrade(g)}
+                            className={initialGrade === g ? "ring-4 ring-[rgba(15,118,110,.18)]" : ""}
+                            title={`Grade ${g}`}
+                          >
+                            {g}
+                          </Button>
+                        ))}
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label>Time spent (minutes)</Label>
+                          <Input
+                            inputMode="decimal"
+                            value={initialMinutes}
+                            onChange={(e) => setInitialMinutes(e.target.value)}
+                            placeholder="e.g. 35"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Solved/reviewed at</Label>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="datetime-local"
+                              value={initialReviewedAt}
+                              onChange={(e) => setInitialReviewedAt(e.target.value)}
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => setInitialReviewedAt(toDatetimeLocalValue(new Date()))}
+                              title="Set to now"
+                            >
+                              Now
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+                <div className="flex items-center justify-end gap-2">
+                  <Button variant="secondary" type="button" onClick={() => setOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={busy}>
+                    {busy ? "Saving..." : "Save"}
+                  </Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="mb-4 grid gap-3 lg:grid-cols-[1fr_auto_auto] lg:items-end">
+          <div className="space-y-2">
+            <Label htmlFor="q">Search</Label>
+            <Input
+              id="q"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="title, url, platform, topic..."
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {(["all", "easy", "medium", "hard", "unknown"] as const).map((d) => (
+              <Button
+                key={d}
+                type="button"
+                size="sm"
+                variant={difficultyFilter === d ? "primary" : "outline"}
+                onClick={() => setDifficultyFilter(d)}
+              >
+                {d === "all" ? "All" : d[0].toUpperCase() + d.slice(1)}
+              </Button>
+            ))}
+            <Button
+              type="button"
+              size="sm"
+              variant={showArchived ? "primary" : "outline"}
+              onClick={() => setShowArchived((v) => !v)}
+              title="Toggle archived"
+            >
+              {showArchived ? "Showing archived" : "Hide archived"}
+            </Button>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Platform</Label>
+              <select
+                className="h-11 w-full rounded-2xl border border-[color:var(--line)] bg-[color:var(--pf-input-bg)] px-4 text-sm shadow-[var(--pf-input-shadow)] outline-none transition focus:border-[rgba(15,118,110,.5)] focus:ring-4 focus:ring-[rgba(15,118,110,.14)]"
+                value={platformFilter}
+                onChange={(e) => setPlatformFilter(e.target.value)}
+              >
+                <option value="all">All</option>
+                {platforms.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label>Topic</Label>
+              <select
+                className="h-11 w-full rounded-2xl border border-[color:var(--line)] bg-[color:var(--pf-input-bg)] px-4 text-sm shadow-[var(--pf-input-shadow)] outline-none transition focus:border-[rgba(15,118,110,.5)] focus:ring-4 focus:ring-[rgba(15,118,110,.14)]"
+                value={topicFilter}
+                onChange={(e) => setTopicFilter(e.target.value)}
+              >
+                <option value="all">All</option>
+                {topicsList.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 text-sm text-[color:var(--muted)]">
+          <div>
+            Showing <span className="font-medium text-[color:var(--foreground)]">{filtered.length}</span> of{" "}
+            <span className="font-medium text-[color:var(--foreground)]">{items.length}</span>.
+          </div>
+          {query || difficultyFilter !== "all" || platformFilter !== "all" || topicFilter !== "all" || showArchived ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                setQuery("");
+                setDifficultyFilter("all");
+                setPlatformFilter("all");
+                setTopicFilter("all");
+                setShowArchived(false);
+              }}
+            >
+              Clear filters
+            </Button>
+          ) : null}
+        </div>
+
+        {error ? (
+          <div className="rounded-2xl border border-[rgba(180,35,24,.28)] bg-[rgba(180,35,24,.08)] px-4 py-3 text-sm">
+            {error}
+          </div>
+        ) : null}
+        {loading ? (
+          <div className="space-y-3">
+            {Array.from({ length: 4 }).map((_, idx) => (
+              <div
+                key={idx}
+                className="animate-pulse rounded-[20px] border border-[color:var(--line)] bg-[color:var(--pf-surface-weak)] p-4"
+              >
+                <div className="h-5 w-2/3 rounded bg-[rgba(16,24,40,.08)]" />
+                <div className="mt-3 h-4 w-1/3 rounded bg-[rgba(16,24,40,.06)]" />
+                <div className="mt-3 h-4 w-1/2 rounded bg-[rgba(16,24,40,.06)]" />
+              </div>
+            ))}
+          </div>
+        ) : items.length === 0 ? (
+          <div className="rounded-2xl border border-[color:var(--line)] bg-[color:var(--pf-surface-weak)] px-4 py-6 text-sm text-[color:var(--muted)]">
+            No problems yet. Add one to start tracking.
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="rounded-2xl border border-[color:var(--line)] bg-[color:var(--pf-surface-weak)] px-4 py-6 text-sm text-[color:var(--muted)]">
+            No matches. Try clearing filters.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {filtered.map((p) => {
+              const active = p.state?.is_active ?? true;
+              return (
+                <div
+                  key={p.id}
+                  className="rounded-[20px] border border-[color:var(--line)] bg-[color:var(--pf-surface)] p-4 shadow-[0_12px_28px_rgba(16,24,40,.06)]"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-[260px]">
+                      <div className="pf-display text-lg font-semibold leading-tight">
+                        <a
+                          href={p.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="underline decoration-[rgba(15,118,110,.28)] underline-offset-4 hover:decoration-[rgba(15,118,110,.55)]"
+                        >
+                          {p.title || p.url}
+                        </a>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[color:var(--muted)]">
+                        {p.platform ? <span>{p.platform}</span> : null}
+                        {p.difficulty ? <span>• {p.difficulty}</span> : null}
+                        {active ? (
+                          <Badge className="border-[rgba(15,118,110,.28)] bg-[rgba(15,118,110,.08)]">Active</Badge>
+                        ) : (
+                          <Badge className="border-[rgba(16,24,40,.18)] bg-[rgba(16,24,40,.06)]">Archived</Badge>
+                        )}
+                      </div>
+                      {p.topics?.length ? (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {p.topics.slice(0, 8).map((t) => (
+                            <Badge key={t} className="bg-[color:var(--pf-chip-bg)]">
+                              {t}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant={active ? "outline" : "primary"}
+                        disabled={busy}
+                        onClick={() => toggleActive(p.id, !active)}
+                      >
+                        {active ? "Archive" : "Activate"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}

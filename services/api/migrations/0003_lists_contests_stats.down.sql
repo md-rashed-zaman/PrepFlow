@@ -1,0 +1,6 @@
+DROP TABLE IF EXISTS contest_results;
+DROP TABLE IF EXISTS contest_items;
+DROP TABLE IF EXISTS contests;
+DROP TABLE IF EXISTS list_items;
+DROP TABLE IF EXISTS lists;
+

@@ -1,0 +1,15 @@
+.git
+.github
+**/*.md
+docs
+deploy
+scripts
+
+**/*_test.go
+
+# Frontend build artifacts / deps
+**/node_modules
+**/.next
+**/.turbo
+apps/web/.env.local
+**/*.log

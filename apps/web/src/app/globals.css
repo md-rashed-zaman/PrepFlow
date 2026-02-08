@@ -1,0 +1,131 @@
+@import "tailwindcss";
+
+:root {
+  --background: #fbf7ef;
+  --foreground: #101828;
+  --muted: rgba(16, 24, 40, 0.68);
+  --card: #ffffff;
+  --card-2: rgba(255, 255, 255, 0.68);
+  --line: rgba(16, 24, 40, 0.14);
+  --shadow: 0 16px 40px rgba(16, 24, 40, 0.1);
+  --primary: #0f766e;
+  --primary-ink: #062f2c;
+  --accent: #a16207;
+  --danger: #b42318;
+
+  --radius: 16px;
+
+  /* Theme tokens used across components (avoid hard-coded whites so dark mode stays coherent). */
+  --pf-surface-weak: rgba(255, 255, 255, 0.6);
+  --pf-surface: rgba(255, 255, 255, 0.72);
+  --pf-surface-strong: rgba(255, 255, 255, 0.86);
+  --pf-surface-hover: rgba(255, 255, 255, 0.9);
+  --pf-chip-bg: rgba(255, 255, 255, 0.65);
+  --pf-input-bg: rgba(255, 255, 255, 0.78);
+  --pf-input-shadow: 0 1px 0 rgba(16, 24, 40, 0.04);
+}
+
+:root[data-theme="dark"] {
+  /* Midnight drafting-table vibe: deep ink, soft teal + brass accents, subtle grid glow. */
+  --background: #0b0f14;
+  --foreground: rgba(248, 250, 252, 0.92);
+  --muted: rgba(248, 250, 252, 0.62);
+  --card: rgba(16, 24, 40, 0.88);
+  --card-2: rgba(16, 24, 40, 0.65);
+  --line: rgba(248, 250, 252, 0.12);
+  --shadow: 0 22px 60px rgba(0, 0, 0, 0.55);
+  --primary: #2dd4bf;
+  --primary-ink: #062f2c;
+  --accent: #fbbf24;
+  --danger: #fb7185;
+
+  --pf-surface-weak: rgba(16, 24, 40, 0.52);
+  --pf-surface: rgba(16, 24, 40, 0.7);
+  --pf-surface-strong: rgba(16, 24, 40, 0.84);
+  --pf-surface-hover: rgba(16, 24, 40, 0.78);
+  --pf-chip-bg: rgba(16, 24, 40, 0.62);
+  --pf-input-bg: rgba(16, 24, 40, 0.76);
+  --pf-input-shadow: 0 1px 0 rgba(0, 0, 0, 0.45);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--pf-font-sans);
+  --font-display: var(--pf-font-display);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  font-family: var(--pf-font-sans);
+  color: var(--foreground);
+  background:
+    radial-gradient(1200px 600px at 14% -5%, rgba(15, 118, 110, 0.1), transparent 60%),
+    radial-gradient(900px 520px at 100% 0%, rgba(161, 98, 7, 0.08), transparent 55%),
+    repeating-linear-gradient(
+      0deg,
+      rgba(16, 24, 40, 0.03),
+      rgba(16, 24, 40, 0.03) 1px,
+      transparent 1px,
+      transparent 10px
+    ),
+    var(--background);
+}
+
+:root[data-theme="dark"] body {
+  background:
+    radial-gradient(1100px 560px at 18% -10%, rgba(45, 212, 191, 0.12), transparent 62%),
+    radial-gradient(760px 520px at 100% 0%, rgba(251, 191, 36, 0.09), transparent 60%),
+    repeating-linear-gradient(
+      0deg,
+      rgba(248, 250, 252, 0.03),
+      rgba(248, 250, 252, 0.03) 1px,
+      transparent 1px,
+      transparent 12px
+    ),
+    var(--background);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: rgba(15, 118, 110, 0.18);
+}
+
+:root[data-theme="dark"] ::selection {
+  background: rgba(45, 212, 191, 0.22);
+}
+
+a {
+  color: inherit;
+}
+
+.pf-container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 22px 20px 64px 20px;
+}
+
+.pf-paper {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.pf-kicker {
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.pf-display {
+  font-family: var(--pf-font-display);
+}

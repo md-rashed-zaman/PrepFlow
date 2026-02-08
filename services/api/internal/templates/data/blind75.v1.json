@@ -1,0 +1,13 @@
+[
+  {"url":"https://leetcode.com/problems/two-sum/","title":"Two Sum","platform":"LeetCode","difficulty":"Easy","topics":["arrays","hashmap"]},
+  {"url":"https://leetcode.com/problems/best-time-to-buy-and-sell-stock/","title":"Best Time to Buy and Sell Stock","platform":"LeetCode","difficulty":"Easy","topics":["arrays","dp"]},
+  {"url":"https://leetcode.com/problems/contains-duplicate/","title":"Contains Duplicate","platform":"LeetCode","difficulty":"Easy","topics":["arrays","hashset"]},
+  {"url":"https://leetcode.com/problems/product-of-array-except-self/","title":"Product of Array Except Self","platform":"LeetCode","difficulty":"Medium","topics":["arrays"]},
+  {"url":"https://leetcode.com/problems/maximum-subarray/","title":"Maximum Subarray","platform":"LeetCode","difficulty":"Medium","topics":["dp"]},
+  {"url":"https://leetcode.com/problems/merge-intervals/","title":"Merge Intervals","platform":"LeetCode","difficulty":"Medium","topics":["intervals","sorting"]},
+  {"url":"https://leetcode.com/problems/valid-parentheses/","title":"Valid Parentheses","platform":"LeetCode","difficulty":"Easy","topics":["stack"]},
+  {"url":"https://leetcode.com/problems/linked-list-cycle/","title":"Linked List Cycle","platform":"LeetCode","difficulty":"Easy","topics":["linked-list","two-pointers"]},
+  {"url":"https://leetcode.com/problems/lowest-common-ancestor-of-a-binary-search-tree/","title":"LCA of BST","platform":"LeetCode","difficulty":"Easy","topics":["tree","bst"]},
+  {"url":"https://leetcode.com/problems/number-of-islands/","title":"Number of Islands","platform":"LeetCode","difficulty":"Medium","topics":["graphs","bfs","dfs"]}
+]
+

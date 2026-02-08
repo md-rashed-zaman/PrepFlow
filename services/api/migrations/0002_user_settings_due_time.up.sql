@@ -1,0 +1,4 @@
+ALTER TABLE user_settings
+    ADD COLUMN IF NOT EXISTS due_hour_local INT NOT NULL DEFAULT 9,
+    ADD COLUMN IF NOT EXISTS due_minute_local INT NOT NULL DEFAULT 0;
+
