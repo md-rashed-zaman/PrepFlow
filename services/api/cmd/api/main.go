@@ -129,6 +129,7 @@ func main() {
 				r.Get("/overview", statsHandler.Overview)
 				r.Get("/topics", statsHandler.Topics)
 				r.Get("/streaks", statsHandler.Streaks)
+				r.Get("/contests", statsHandler.Contests)
 			})
 		})
 	})

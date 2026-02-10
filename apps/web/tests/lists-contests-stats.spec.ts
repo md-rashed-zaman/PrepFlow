@@ -30,15 +30,23 @@ test("lists import -> contest generate -> stats renders", async ({ page }) => {
   await page.getByRole("button", { name: "Generate" }).click();
   await expect(page.getByText("Contest generated.")).toBeVisible();
 
-  // Start + submit results (defaults to grade 2 if not selected).
+  // Start + record at least one result (per-item record applies scheduling).
   await page.getByRole("button", { name: "Start" }).click();
-  await page.getByRole("button", { name: "Submit results" }).click();
-  await expect(page.getByText("Results saved.")).toBeVisible();
+  await page.getByRole("button", { name: "Confirm" }).first().click();
+  await expect(page.getByText("Recorded.")).toBeVisible();
+
+  // Finish contest (accept warning about unrecorded problems).
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: "Finish contest" }).click();
+  await expect(page.getByText("Contest finished.")).toBeVisible();
 
   // Stats should render.
   await page.goto("/stats");
   await expect(page.getByRole("heading", { name: "Progress signals" })).toBeVisible();
+
+  // Contests tab should render.
+  await page.getByRole("button", { name: "Contests" }).click();
+  await expect(page.getByRole("heading", { name: "Contest pulse" })).toBeVisible();
   await expectNoClientError(page);
   expect(pageErrors, `page errors: ${pageErrors.join("\n")}`).toHaveLength(0);
 });
-

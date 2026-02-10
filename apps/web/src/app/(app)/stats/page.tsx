@@ -6,7 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import type { ProblemWithState, StatsOverview, TopicStat } from "@/lib/types";
+import type { ContestStatsResponse, ProblemWithState, StatsOverview, TopicStat } from "@/lib/types";
+import { difficultyChip } from "@/lib/presentation";
 
 function Metric({ label, value, hint }: { label: string; value: string | number; hint?: string }) {
   return (
@@ -42,6 +43,11 @@ function dueChip(iso?: string) {
   return { label: `Due in ${d}d`, tone: "border-[rgba(45,212,191,.28)] bg-[rgba(45,212,191,.10)]" };
 }
 
+function fmtMinutes(totalSec: number) {
+  if (!Number.isFinite(totalSec) || totalSec <= 0) return "—";
+  return `${Math.round(totalSec / 60)}m`;
+}
+
 export default function StatsPage() {
   const [overview, setOverview] = React.useState<StatsOverview | null>(null);
   const [topics, setTopics] = React.useState<TopicStat[]>([]);
@@ -50,6 +56,10 @@ export default function StatsPage() {
   const [activeTopic, setActiveTopic] = React.useState<string>("");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+
+  const [panel, setPanel] = React.useState<"topics" | "contests">("topics");
+  const [contestStats, setContestStats] = React.useState<ContestStatsResponse | null>(null);
+  const [contestWindow, setContestWindow] = React.useState<7 | 30 | 90>(30);
 
   async function load() {
     setBusy(true);
@@ -76,6 +86,22 @@ export default function StatsPage() {
     }
   }
 
+  async function loadContestStats(windowDays: number) {
+    setBusy(true);
+    setError(null);
+    try {
+      const resp = await fetch(`/api/stats/contests?window_days=${encodeURIComponent(String(windowDays))}`, { cache: "no-store" });
+      if (!resp.ok) {
+        setError("Failed to load contest stats");
+        return;
+      }
+      const data = (await resp.json().catch(() => null)) as unknown;
+      setContestStats(data && typeof data === "object" ? (data as ContestStatsResponse) : null);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function ensureLibraryLoaded() {
     if (library.length > 0) return;
     const resp = await fetch("/api/problems", { cache: "no-store" });
@@ -87,6 +113,11 @@ export default function StatsPage() {
   React.useEffect(() => {
     void load();
   }, []);
+
+  React.useEffect(() => {
+    if (panel !== "contests") return;
+    void loadContestStats(contestWindow);
+  }, [panel, contestWindow]);
 
   const topicProblems = React.useMemo(() => {
     const needle = activeTopic.trim().toLowerCase();
@@ -115,12 +146,52 @@ export default function StatsPage() {
         <CardHeader>
           <div>
             <div className="pf-kicker">Stats</div>
-            <CardTitle>Progress signals</CardTitle>
-            <CardDescription>Keep it lightweight: overdue pressure, cadence, and weak areas.</CardDescription>
+            <CardTitle>Stats</CardTitle>
+            <CardDescription>Overview metrics stay pinned. Use tabs to explore Topics or Contests.</CardDescription>
           </div>
-          <Button variant="outline" onClick={load} disabled={busy}>
-            Refresh
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex rounded-full border border-[color:var(--line)] bg-[color:var(--pf-surface-weak)] p-1">
+              {([
+                { key: "topics", label: "Topics" },
+                { key: "contests", label: "Contests" },
+              ] as const).map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => setPanel(t.key)}
+                  className={[
+                    "px-3 py-2 text-xs font-semibold rounded-full transition",
+                    panel === t.key
+                      ? "bg-[color:var(--pf-surface-strong)] shadow-[0_10px_22px_rgba(16,24,40,.06)]"
+                      : "text-[color:var(--muted)] hover:text-[color:var(--foreground)]",
+                  ].join(" ")}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (panel === "contests") void loadContestStats(contestWindow);
+                void load();
+              }}
+              disabled={busy}
+            >
+              Refresh
+            </Button>
+          </div>
+        </CardHeader>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div>
+            <div className="pf-kicker">Overview</div>
+            <CardTitle>Progress signals</CardTitle>
+            <CardDescription>Overdue pressure, daily cadence, and short-term workload.</CardDescription>
+          </div>
+          <Badge className="border-[color:var(--line)] bg-[color:var(--pf-chip-bg)]">v1</Badge>
         </CardHeader>
         <CardContent>
           {error ? (
@@ -145,61 +216,196 @@ export default function StatsPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <div>
-            <div className="pf-kicker">Topics</div>
-            <CardTitle>Mastery by topic</CardTitle>
-            <CardDescription>Based on reps, ease, and overdue penalty (v1).</CardDescription>
-          </div>
-          <Badge className="border-[rgba(16,24,40,.18)] bg-[rgba(16,24,40,.04)]">{topics.length} topics</Badge>
-        </CardHeader>
-        <CardContent>
-          {topics.length === 0 ? (
-            <div className="rounded-2xl border border-[color:var(--line)] bg-[color:var(--pf-surface-weak)] px-4 py-8 text-sm text-[color:var(--muted)]">
-              Add topics to problems to see breakdowns.
+      {panel === "topics" ? (
+        <Card>
+          <CardHeader>
+            <div>
+              <div className="pf-kicker">Topics</div>
+              <CardTitle>Mastery by topic</CardTitle>
+              <CardDescription>Based on reps, ease, and overdue penalty (v1).</CardDescription>
             </div>
-          ) : (
-            <div className="overflow-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-xs text-[color:var(--muted)]">
-                    <th className="py-2 pr-4">Topic</th>
-                    <th className="py-2 pr-4">Problems</th>
-                    <th className="py-2 pr-4">Mastery avg</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {topics.map((t) => (
-                    <tr
-                      key={t.topic}
-                      className="border-t border-[color:var(--line)] hover:bg-[color:var(--pf-surface-weak)] cursor-pointer"
-                      onClick={async () => {
-                        setActiveTopic(t.topic);
-                        await ensureLibraryLoaded();
-                        setTopicOpen(true);
-                      }}
-                      title="View problems in this topic"
-                    >
-                      <td className="py-3 pr-4">
-                        <span className="pf-display font-semibold capitalize underline decoration-[rgba(45,212,191,.22)] underline-offset-4">
-                          {t.topic}
-                        </span>
-                      </td>
-                      <td className="py-3 pr-4 text-[color:var(--muted)]">{t.count}</td>
-                      <td className="py-3 pr-4">
-                        <Badge className="border-[rgba(45,212,191,.28)] bg-[rgba(45,212,191,.10)]">
-                          {t.mastery_avg}
-                        </Badge>
-                      </td>
+            <Badge className="border-[color:var(--line)] bg-[color:var(--pf-chip-bg)]">{topics.length} topics</Badge>
+          </CardHeader>
+          <CardContent>
+            {topics.length === 0 ? (
+              <div className="rounded-2xl border border-[color:var(--line)] bg-[color:var(--pf-surface-weak)] px-4 py-8 text-sm text-[color:var(--muted)]">
+                Add topics to problems to see breakdowns.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-[color:var(--muted)]">
+                      <th className="py-2 pr-4">Topic</th>
+                      <th className="py-2 pr-4">Problems</th>
+                      <th className="py-2 pr-4">Mastery avg</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {topics.map((t) => (
+                      <tr
+                        key={t.topic}
+                        className="border-t border-[color:var(--line)] hover:bg-[color:var(--pf-surface-weak)] cursor-pointer"
+                        onClick={async () => {
+                          setActiveTopic(t.topic);
+                          await ensureLibraryLoaded();
+                          setTopicOpen(true);
+                        }}
+                        title="View problems in this topic"
+                      >
+                        <td className="py-3 pr-4">
+                          <span className="pf-display font-semibold capitalize underline decoration-[rgba(45,212,191,.22)] underline-offset-4">
+                            {t.topic}
+                          </span>
+                        </td>
+                        <td className="py-3 pr-4 text-[color:var(--muted)]">{t.count}</td>
+                        <td className="py-3 pr-4">
+                          <Badge className="border-[rgba(45,212,191,.28)] bg-[rgba(45,212,191,.10)]">
+                            {t.mastery_avg}
+                          </Badge>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <div>
+              <div className="pf-kicker">Contests</div>
+              <CardTitle>Contest pulse</CardTitle>
+              <CardDescription>Based on recorded contest results (per-problem Confirm).</CardDescription>
             </div>
-          )}
-        </CardContent>
-      </Card>
+            <div className="flex flex-wrap items-center gap-2">
+              {([7, 30, 90] as const).map((d) => (
+                <Button
+                  key={d}
+                  size="sm"
+                  variant={contestWindow === d ? "primary" : "outline"}
+                  onClick={() => setContestWindow(d)}
+                  disabled={busy}
+                >
+                  {d}d
+                </Button>
+              ))}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {!contestStats ? (
+              <div className="rounded-2xl border border-[color:var(--line)] bg-[color:var(--pf-surface-weak)] px-4 py-8 text-sm text-[color:var(--muted)]">
+                Loading contest stats…
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid gap-3 md:grid-cols-3">
+                  <Metric label={`Contests finished (${contestStats.window_days}d)`} value={contestStats.totals.contests_finished} />
+                  <Metric label="Problems recorded" value={contestStats.totals.problems_recorded} hint="Each Confirm creates/updates a contest result." />
+                  <Metric
+                    label="Solved rate"
+                    value={
+                      contestStats.totals.problems_recorded
+                        ? `${Math.round((contestStats.totals.solved_count / contestStats.totals.problems_recorded) * 100)}%`
+                        : "—"
+                    }
+                  />
+                  <Metric label="Avg grade" value={contestStats.totals.avg_grade != null ? contestStats.totals.avg_grade.toFixed(1) : "—"} />
+                  <Metric label="Time recorded" value={fmtMinutes(contestStats.totals.total_time_sec)} hint="From the minutes field (if provided)." />
+                  <Metric label="Solved (count)" value={contestStats.totals.solved_count} />
+                </div>
+
+                <div className="rounded-[20px] border border-[color:var(--line)] bg-[color:var(--pf-surface)] p-4 shadow-[0_12px_28px_rgba(16,24,40,.06)]">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="pf-display text-sm font-semibold">Daily recorded problems</div>
+                      <div className="mt-1 text-xs text-[color:var(--muted)]">Last {contestStats.window_days} days</div>
+                    </div>
+                    <Badge className="border-[color:var(--line)] bg-[color:var(--pf-chip-bg)]">
+                      max{" "}
+                      {Math.max(0, ...contestStats.days.map((d) => d.problems_recorded))}
+                    </Badge>
+                  </div>
+                  {contestStats.days.length === 0 ? null : (
+                    <div className="mt-3">
+                      <div className="flex h-16 items-end gap-1">
+                        {(() => {
+                          const max = Math.max(1, ...contestStats.days.map((d) => d.problems_recorded));
+                          return contestStats.days.map((d) => {
+                            const h = Math.max(2, Math.round((d.problems_recorded / max) * 64));
+                            const tone = d.problems_recorded === 0 ? "bg-[rgba(16,24,40,.08)]" : "bg-[rgba(15,118,110,.35)]";
+                            return (
+                              <div
+                                key={d.date}
+                                className={`flex-1 rounded-md ${tone}`}
+                                style={{ height: `${h}px` }}
+                                title={`${d.date} • recorded ${d.problems_recorded} • solved ${d.solved_count}`}
+                              />
+                            );
+                          });
+                        })()}
+                      </div>
+                      <div className="mt-2 flex items-center justify-between text-[10px] text-[color:var(--muted)]">
+                        <span>{contestStats.days[0]?.date}</span>
+                        <span>{contestStats.days[contestStats.days.length - 1]?.date}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-[20px] border border-[color:var(--line)] bg-[color:var(--pf-surface)] p-4 shadow-[0_12px_28px_rgba(16,24,40,.06)]">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="pf-display text-sm font-semibold">Recent contests</div>
+                      <div className="mt-1 text-xs text-[color:var(--muted)]">Finished sessions (most recent first).</div>
+                    </div>
+                    <Badge className="border-[color:var(--line)] bg-[color:var(--pf-chip-bg)]">{contestStats.recent.length}</Badge>
+                  </div>
+                  {contestStats.recent.length === 0 ? (
+                    <div className="mt-3 rounded-2xl border border-[color:var(--line)] bg-[color:var(--pf-surface-weak)] px-4 py-6 text-sm text-[color:var(--muted)]">
+                      Finish a contest to see history here.
+                    </div>
+                  ) : (
+                    <div className="mt-3 space-y-2">
+                      {contestStats.recent.map((c) => (
+                        <div
+                          key={c.contest_id}
+                          className="rounded-[18px] border border-[color:var(--line)] bg-[color:var(--pf-surface-weak)] px-4 py-3"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="min-w-[220px]">
+                              <div className="pf-display text-sm font-semibold leading-tight">
+                                {c.strategy} • {c.duration_minutes}m
+                              </div>
+                              <div className="mt-1 text-xs text-[color:var(--muted)]">
+                                {c.completed_at ? new Date(c.completed_at).toLocaleString() : "—"}
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2 text-xs">
+                              <Badge className="border-[color:var(--line)] bg-[color:var(--pf-chip-bg)]">
+                                Recorded {c.recorded_count}/{c.total_items}
+                              </Badge>
+                              <Badge className="border-[color:var(--line)] bg-[color:var(--pf-chip-bg)]">Solved {c.solved_count}</Badge>
+                              <Badge className="border-[color:var(--line)] bg-[color:var(--pf-chip-bg)]">
+                                Avg {c.avg_grade != null ? c.avg_grade.toFixed(1) : "—"}
+                              </Badge>
+                              <Badge className="border-[color:var(--line)] bg-[color:var(--pf-chip-bg)]">
+                                Time {fmtMinutes(c.total_time_sec)}
+                              </Badge>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Dialog open={topicOpen} onOpenChange={setTopicOpen}>
         <DialogContent className="w-[min(860px,calc(100vw-28px))]">
@@ -235,24 +441,27 @@ export default function StatsPage() {
                         </div>
                         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[color:var(--muted)]">
                           {p.platform ? <span>{p.platform}</span> : null}
-                          {p.difficulty ? <span>• {p.difficulty}</span> : null}
+                          {(() => {
+                            const diff = difficultyChip(p.difficulty || "");
+                            return diff ? <Badge className={diff.tone}>{diff.label}</Badge> : null;
+                          })()}
                           {chip ? <Badge className={chip.tone}>{chip.label}</Badge> : null}
                         </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-2 text-xs">
-                        <Badge className="border-[rgba(16,24,40,.18)] bg-[rgba(16,24,40,.04)]">
+                        <Badge className="border-[color:var(--line)] bg-[color:var(--pf-chip-bg)]">
                           mastery {Math.round(mastery)}
                         </Badge>
-                        <Badge className="border-[rgba(16,24,40,.18)] bg-[rgba(16,24,40,.04)]">
+                        <Badge className="border-[color:var(--line)] bg-[color:var(--pf-chip-bg)]">
                           reps {p.state?.reps ?? 0}
                         </Badge>
-                        <Badge className="border-[rgba(16,24,40,.18)] bg-[rgba(16,24,40,.04)]">
+                        <Badge className="border-[color:var(--line)] bg-[color:var(--pf-chip-bg)]">
                           ease {(p.state?.ease ?? 2.5).toFixed(2)}
                         </Badge>
-                        <Badge className="border-[rgba(16,24,40,.18)] bg-[rgba(16,24,40,.04)]">
+                        <Badge className="border-[color:var(--line)] bg-[color:var(--pf-chip-bg)]">
                           interval {p.state?.interval_days ?? 1}d
                         </Badge>
-                        <Badge className="border-[rgba(16,24,40,.18)] bg-[rgba(16,24,40,.04)]">
+                        <Badge className="border-[color:var(--line)] bg-[color:var(--pf-chip-bg)]">
                           last {(p.state as any)?.last_grade ?? "—"}
                         </Badge>
                       </div>

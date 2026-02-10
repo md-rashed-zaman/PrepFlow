@@ -632,6 +632,31 @@ paths:
         "401":
           description: Unauthorized
 
+  /api/v1/stats/contests:
+    get:
+      tags: [Stats]
+      summary: Contest stats (based on contest results)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: window_days
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 180
+          description: Rolling window in days (default 30)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContestStatsResponse"
+        "401":
+          description: Unauthorized
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1072,4 +1097,102 @@ components:
       required: [current_streak_days]
       properties:
         current_streak_days:
+          type: integer
+
+    ContestStatsResponse:
+      type: object
+      required: [window_days, totals, days, recent]
+      properties:
+        window_days:
+          type: integer
+        totals:
+          $ref: "#/components/schemas/ContestStatsTotals"
+        days:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContestStatsDay"
+        recent:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContestStatsRecent"
+
+    ContestStatsTotals:
+      type: object
+      required: [contests_finished, problems_recorded, solved_count, total_time_sec]
+      properties:
+        contests_finished:
+          type: integer
+        problems_recorded:
+          type: integer
+        solved_count:
+          type: integer
+        avg_grade:
+          type: number
+          format: double
+          nullable: true
+        total_time_sec:
+          type: integer
+
+    ContestStatsDay:
+      type: object
+      required: [date, contests_finished, problems_recorded, solved_count, total_time_sec]
+      properties:
+        date:
+          type: string
+          description: YYYY-MM-DD in user timezone
+        contests_finished:
+          type: integer
+        problems_recorded:
+          type: integer
+        solved_count:
+          type: integer
+        avg_grade:
+          type: number
+          format: double
+          nullable: true
+        total_time_sec:
+          type: integer
+
+    ContestStatsRecent:
+      type: object
+      required:
+        [
+          contest_id,
+          strategy,
+          duration_minutes,
+          created_at,
+          total_items,
+          recorded_count,
+          solved_count,
+          total_time_sec,
+        ]
+      properties:
+        contest_id:
+          type: string
+        strategy:
+          type: string
+        duration_minutes:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        total_items:
+          type: integer
+        recorded_count:
+          type: integer
+        solved_count:
+          type: integer
+        avg_grade:
+          type: number
+          format: double
+          nullable: true
+        total_time_sec:
           type: integer
